@@ -71,25 +71,60 @@ def get_delivery_estimate(pincode: str, speed: str = "standard") -> dict:
 
 @tool(parse_docstring=True)
 def check_return_eligibility(order_id: str, reason: str) -> dict:
-    """TODO MP1-T1: write this docstring yourself - it is the prompt the model reads to decide WHEN to call this tool.
-    Say what the tool checks, and when to use it (and when not to).
+    """check whether an order is eligible for return and refund, and if so, how to do it.
+
+    Use this tool when a customer asks to return an existing order.
+    It checks delivery status, product category, return time window,
+    and calculates the eligible refund amount.
+
+    Do not use this tool for order tracking, cancellations, or
+    questions unrelated to returning an order.
 
     Args:
-        order_id: TODO - describe it (format, e.g. ORD-10231)
-        reason: TODO - describe it, and list the allowed values (see REASONS above)
+        order_id: The customer's order ID in the format ORD-10231.
+        reason: The reason for the return. Must be one of the allowed values defined in REASONS: "wrong_size", "changed_mind", "damaged", "defective", "wrong_item", or "not_as_described".
     """
-    # TODO MP1-T1: Northwind Store's return rules, in this order:
-    #   o = _find(order_id)
-    #   1. not delivered yet (status != "delivered")      -> {"eligible": False, "why": "not delivered yet ..."}
-    #   2. o["category"] in NON_RETURNABLE                 -> {"eligible": False, "why": "<category> is non-returnable"}
-    #   3. window = DAMAGED_WINDOW_DAYS if reason in {"damaged", "defective", "wrong_item"} else RETURN_WINDOW_DAYS
-    #      days = (TODAY - date.fromisoformat(o["delivered_on"])).days
-    #      days > window                                    -> {"eligible": False, "why": f"delivered {days} days ago; window is {window} days"}
-    #   4. otherwise -> {"eligible": True, "days_since_delivery": days, "window_days": window,
-    #                    "refund_rupees": o["price"], "how": "start the return on the website: My Orders > Return"}
-    # TODO MP1-T2: raise ValueError if reason is not one of REASONS (say which values are allowed).
-    raise NotImplementedError("TODO MP1-T1")
+    # Validate the return reason
+    if reason not in REASONS:
+        raise ValueError(
+            f"Invalid reason.Allowed reasons are: {', '.join(REASONS)}. Got {reason!r}"
+        )
+    # Find the order
+    o = _find(order_id)
 
+    # check delivery status
+    if o["status"] != "delivered":
+        return {
+            "eligible": False,
+            "message": f"Order {order_id} is not delivered yet. Return eligibility can only be checked for delivered orders.",
+        }
+    # check non-returnble categories
+    if o["category"] in NON_RETURNABLE:
+        return {
+            "eligible": False,
+            "message": f"Order {order_id} is in the non-returnable category '{o['category']}'. Returns are not allowed for this category.",
+        }
+    # check return window
+    window = (
+        DAMAGED_WINDOW_DAYS 
+        if reason in {"damaged", "defective", "wrong_item"}
+        else RETURN_WINDOW_DAYS
+    )
+
+    days = (TODAY - date.fromisoformat(o["delivered_on"])).days
+    if days > window:
+        return {
+            "eligible": False,
+            "message": f"Order {order_id} was delivered {days} days ago, which exceeds the return window of {window} days for reason '{reason}'.",
+        }
+
+    return {
+        "eligible": True,
+        "days_since_delivery": days,
+        "window_days": window,
+        "refund_rupees": o["price"],
+        "how": "start the return on the website: My Orders > Return"
+    }
 
 TOOLS = {"get_order_status": get_order_status, "get_delivery_estimate": get_delivery_estimate,
          "check_return_eligibility": check_return_eligibility}
